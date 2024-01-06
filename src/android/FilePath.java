@@ -13,6 +13,7 @@ import android.os.Build;
 import android.os.Environment;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
+import android.support.v4.app.ActivityCompat;
 
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaInterface;
@@ -122,9 +123,8 @@ public class FilePath extends CordovaPlugin {
         }
     }
 
-
     public void onRequestPermissionResult(int requestCode, String[] permissions, int[] grantResults) throws JSONException {
-        for (int r : grantResults) {
+        for (int r:grantResults) {
             if (r == PackageManager.PERMISSION_DENIED) {
                 JSONObject resultObj = new JSONObject();
                 resultObj.put("code", 3);
@@ -183,14 +183,6 @@ public class FilePath extends CordovaPlugin {
     }
 
     /**
-     * @param uri The Uri to check.
-     * @return Whether the Uri authority is One Drive.
-     */
-    private static boolean isOneDriveUri(Uri uri) {
-        return "com.microsoft.skydrive.content.external".equals(uri.getAuthority());
-    }
-
-    /**
      * Get the value of the data column for this Uri. This is useful for
      * MediaStore Uris, and other file-based ContentProviders.
      *
@@ -233,7 +225,7 @@ public class FilePath extends CordovaPlugin {
     private static String getContentFromSegments(List<String> segments) {
         String contentPath = "";
 
-        for (String item : segments) {
+        for(String item : segments) {
             if (item.startsWith("content://")) {
                 contentPath = item;
                 break;
@@ -276,13 +268,6 @@ public class FilePath extends CordovaPlugin {
             }
         }
 
-        //fix some devices(Android Q),'type' like "71F8-2C0A"
-        //but "primary".equalsIgnoreCase(type) is false
-        fullPath = "/storage/" + type + "/" + relativePath;
-        if (fileExists(fullPath)) {
-            return fullPath;
-        }
-
         // Environment.isExternalStorageRemovable() is `true` for external and internal storage
         // so we cannot relay on it.
         //
@@ -298,21 +283,7 @@ public class FilePath extends CordovaPlugin {
             return fullPath;
         }
 
-        return "";
-    }
-
-    /**
-     * sometimes in raw type, the second part is a valid filepath
-     *
-     * @param rawPath The raw path
-     */
-    private static String getRawFilepath(String rawPath) {
-        final String[] split = rawPath.split(":");
-        if (fileExists(split[1])) {
-            return split[1];
-        }
-
-        return "";
+        return fullPath;
     }
 
     /**
@@ -358,6 +329,15 @@ public class FilePath extends CordovaPlugin {
             }
             // DownloadsProvider
             else if (isDownloadsDocument(uri)) {
+			    // modify by lawrence 2019.07.17, fix dwonalod folder include subfolder
+                // selected file in download directory, file path is => content://com.android.providers.downloads.documents/document/104
+                // but file direcotry is in download subfolder, such as => /storage/emulated/0/Download/TEST/File.paf
+                // android will return path to => content://com.android.providers.downloads.documents/document/raw%3A%2Fstorage%2Femulated%2F0%2FDownload%2FTEST%2F%File.pdf
+                final String filePath = uri.getPath();
+                if(filePath.startsWith("/document/raw:"))  {
+                    return filePath.replaceFirst("^/document/raw:", "").replaceFirst("^raw:", "");
+                }
+
                 // thanks to https://github.com/hiddentao/cordova-plugin-filepath/issues/34#issuecomment-430129959
                 Cursor cursor = null;
                 try {
@@ -365,45 +345,25 @@ public class FilePath extends CordovaPlugin {
                     if (cursor != null && cursor.moveToFirst()) {
                         String fileName = cursor.getString(0);
                         String path = Environment.getExternalStorageDirectory().toString() + "/Download/" + fileName;
-                        if (fileExists(path)) {
+                        if (!TextUtils.isEmpty(path)) {
                             return path;
                         }
                     }
                 } finally {
                     if (cursor != null)
-                        cursor.close();
+                    cursor.close();
                 }
                 //
                 final String id = DocumentsContract.getDocumentId(uri);
-
-                // sometimes in raw type, the second part is a valid filepath
-                final String rawFilepath = getRawFilepath(id);
-                if (rawFilepath != "") {
-                    return rawFilepath;
-                }
-
-                String[] contentUriPrefixesToTry = new String[]{
-                        "content://downloads/public_downloads",
-                        "content://downloads/my_downloads"
-                };
-
-                for (String contentUriPrefix : contentUriPrefixesToTry) {
-                    Uri contentUri = ContentUris.withAppendedId(Uri.parse(contentUriPrefix), Long.valueOf(id));
-                    try {
-                        String path = getDataColumn(context, contentUri, null, null);
-                        if (path != null) {
-                            return path;
-                        }
-                    } catch (Exception e) {
-                    }
-                }
-
                 try {
-                    return getDriveFilePath(uri, context);
-                } catch (Exception e) {
-                    return uri.getPath();
-                }
+                    final Uri contentUri = ContentUris.withAppendedId(
+                        Uri.parse("content://downloads/public_downloads"), Long.valueOf(id));
 
+                    return getDataColumn(context, contentUri, null, null);
+                } catch(NumberFormatException e) {
+                    //In Android 8 and Android P the id is not a number
+                    return uri.getPath().replaceFirst("^/document/raw:", "").replaceFirst("^raw:", "");
+                }
             }
             // MediaProvider
             else if (isMediaDocument(uri)) {
@@ -419,17 +379,20 @@ public class FilePath extends CordovaPlugin {
                 } else if ("audio".equals(type)) {
                     contentUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
                 } else {
+                    // modify by lawrence 2021.07.08, Fix Android 11 issue
+                    // https://developer.android.com/distribute/best-practices/develop/target-sdk
                     contentUri = MediaStore.Files.getContentUri("external");
                 }
 
                 final String selection = "_id=?";
-                final String[] selectionArgs = new String[]{
+                final String[] selectionArgs = new String[] {
                         split[1]
                 };
 
                 return getDataColumn(context, contentUri, selection, selectionArgs);
-            } else if (isGoogleDriveUri(uri)) {
-                return getDriveFilePath(uri, context);
+            }
+            else if(isGoogleDriveUri(uri)){
+                return getDriveFilePath(uri,context);
             }
         }
         // MediaStore (and general)
@@ -437,20 +400,17 @@ public class FilePath extends CordovaPlugin {
 
             // Return the remote address
             if (isGooglePhotosUri(uri)) {
-                if (uri.toString().contains("mediakey")) {
-                    return getDriveFilePath(uri, context);
-                } else {
-                    String contentPath = getContentFromSegments(uri.getPathSegments());
-                    if (contentPath != "") {
-                        return getPath(context, Uri.parse(contentPath));
-                    } else {
-                        return null;
-                    }
+                String contentPath = getContentFromSegments(uri.getPathSegments());
+                if (contentPath != "") {
+                    return getPath(context, Uri.parse(contentPath));
+                }
+                else {
+                    return null;
                 }
             }
 
-            if (isGoogleDriveUri(uri) || isOneDriveUri(uri)) {
-                return getDriveFilePath(uri, context);
+            if(isGoogleDriveUri(uri)){
+                return getDriveFilePath(uri,context);
             }
 
             return getDataColumn(context, uri, null, null);
@@ -463,26 +423,26 @@ public class FilePath extends CordovaPlugin {
         return null;
     }
 
-    private static String getDriveFilePath(Uri uri, Context context) {
-        Uri returnUri = uri;
+    private static String getDriveFilePath(Uri uri,Context context){
+        Uri returnUri =uri;
         Cursor returnCursor = context.getContentResolver().query(returnUri, null, null, null, null);
         /*
-         * Get the column indexes of the data in the Cursor,
-         *     * move to the first row in the Cursor, get the data,
-         *     * and display it.
-         * */
+        * Get the column indexes of the data in the Cursor,
+        *     * move to the first row in the Cursor, get the data,
+        *     * and display it.
+        * */
         int nameIndex = returnCursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
         int sizeIndex = returnCursor.getColumnIndex(OpenableColumns.SIZE);
         returnCursor.moveToFirst();
         String name = (returnCursor.getString(nameIndex));
         String size = (Long.toString(returnCursor.getLong(sizeIndex)));
-        File file = new File(context.getCacheDir(), name);
+        File   file = new File(context.getCacheDir(),name);
         try {
             InputStream inputStream = context.getContentResolver().openInputStream(uri);
             FileOutputStream outputStream = new FileOutputStream(file);
             int read = 0;
             int maxBufferSize = 1 * 1024 * 1024;
-            int bytesAvailable = inputStream.available();
+            int  bytesAvailable = inputStream.available();
 
             //int bufferSize = 1024;
             int bufferSize = Math.min(bytesAvailable, maxBufferSize);
@@ -491,14 +451,14 @@ public class FilePath extends CordovaPlugin {
             while ((read = inputStream.read(buffers)) != -1) {
                 outputStream.write(buffers, 0, read);
             }
-            Log.e("File Size", "Size " + file.length());
+            Log.e("File Size","Size " + file.length());
             inputStream.close();
             outputStream.close();
-            Log.e("File Path", "Path " + file.getPath());
-            Log.e("File Size", "Size " + file.length());
-        } catch (Exception e) {
-            Log.e("Exception", e.getMessage());
+            Log.e("File Path","Path " + file.getPath());
+            Log.e("File Size","Size " + file.length());
+        }catch (Exception e){
+            Log.e("Exception",e.getMessage());
         }
-        return file.getPath();
+        return  file.getPath();
     }
 }

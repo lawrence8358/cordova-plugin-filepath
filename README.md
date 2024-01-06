@@ -1,44 +1,51 @@
-# cordova-plugin-filepath
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Licensed to the Apache Software Foundation (ASF) under one
+  or more contributor license agreements.  See the NOTICE file
+  distributed with this work for additional information
+  regarding copyright ownership.  The ASF licenses this file
+  to you under the Apache License, Version 2.0 (the
+  "License"); you may not use this file except in compliance
+  with the License.  You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+  Unless required by applicable law or agreed to in writing,
+  software distributed under the License is distributed on an
+  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  KIND, either express or implied.  See the License for the
+  specific language governing permissions and limitations
+  under the License.
+-->
 
-**PLEASE NOTE: This plugin is no longer actively maintained.**
+<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0" xmlns:android="http://schemas.android.com/apk/res/android" id="cordova-plugin-filepath" version="1.5.5">
+    <name>cordova-plugin-filepath</name>
+    <description>Resolve native file paths from content URLs for Cordova platforms</description>
+    <license>Apache 2.0</license>
+    <keywords>cordova,file,ecosystem:cordova,cordova-android</keywords>
+    <repo>https://github.com/hiddentao/cordova-plugin-filepath.git</repo>
+    <issue>https://github.com/hiddentao/cordova-plugin-filepath/issues</issue>
 
-This plugin allows you to resolve the native filesystem path for Android content
-URIs and is based on code in the [aFileChooser](https://github.com/iPaulPro/aFileChooser/blob/master/aFileChooser/src/com/ipaulpro/afilechooser/utils/FileUtils.java) library.
+    <engines>
+        <engine name="cordova-android" version=">=3.1.0"/><!-- Uses CordovaResourceApi -->
+    </engines>
 
-Original inspiration [from StackOverflow](http://stackoverflow.com/questions/20067508/get-real-path-from-uri-android-kitkat-new-storage-access-framework).
+    <!-- android -->
+    <platform name="android">
+        <js-module src="www/FilePath.js" name="FilePath">
+            <clobbers target="window.FilePath"/>
+        </js-module>
 
-## Installation
+        <config-file target="res/xml/config.xml" parent="/*">
+            <feature name="FilePath">
+                <param name="android-package" value="com.hiddentao.cordova.filepath.FilePath"/>
+                <param name="onload" value="true"/>
+            </feature>
+        </config-file>
 
-```bash
-$ cordova plugin add cordova-plugin-filepath
-```
+        <config-file target="AndroidManifest.xml" parent="/*">
+            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+        </config-file>
 
-## Supported Platforms
-
-* Android
-
-## Usage
-
-Once installed the plugin defines the `window.FilePath` object. To resolve a
-file path:
-
-```js
-window.FilePath.resolveNativePath('content://...', successCallback, errorCallback);
-```
-
-##### successCallback
-Returns the ``file://`` file path.
-
-##### errorCallback
-Returns the following object:
-```js
-{ code: <integer>, message: <string> }
-```
-Possible error codes are:
-* ``-1`` - describes an invalid action
-* ``0`` - ``file://`` path could not be resolved
-* ``1`` - the native path links to a cloud file (e.g: from Google Drive app)
-
-## LICENSE
-
-Apache (see LICENSE.md)
+        <source-file src="src/android/FilePath.java" target-dir="src/com/hiddentao/cordova/filepath"/>
+    </platform>
+    <author email="ram@hiddentao.com">Ramesh Nair</author>
+</plugin>
