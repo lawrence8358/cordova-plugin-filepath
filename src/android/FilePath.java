@@ -48,10 +48,9 @@ public class FilePath extends CordovaPlugin {
 
     public static final int READ_REQ_CODE = 0;
 
-    public static final String READ = Manifest.permission.READ_EXTERNAL_STORAGE;
-
     protected void getReadPermission(int requestCode) {
-        PermissionHelper.requestPermission(this, requestCode, READ);
+        String permission = _getPermissions();
+        PermissionHelper.requestPermission(this, requestCode, permission);
     }
 
     public void initialize(CordovaInterface cordova, final CordovaWebView webView) {
@@ -72,7 +71,8 @@ public class FilePath extends CordovaPlugin {
         this.uriStr = args.getString(0);
 
         if (action.equals("resolveNativePath")) {
-            if (PermissionHelper.hasPermission(this, READ)) {
+            String permission = _getPermissions();
+            if (PermissionHelper.hasPermission(this, permission)) {
                 resolveNativePath();
             }
             else {
@@ -329,7 +329,7 @@ public class FilePath extends CordovaPlugin {
             }
             // DownloadsProvider
             else if (isDownloadsDocument(uri)) {
-			    // modify by lawrence 2019.07.17, fix dwonalod folder include subfolder
+                // modify by lawrence 2019.07.17, fix dwonalod folder include subfolder
                 // selected file in download directory, file path is => content://com.android.providers.downloads.documents/document/104
                 // but file direcotry is in download subfolder, such as => /storage/emulated/0/Download/TEST/File.paf
                 // android will return path to => content://com.android.providers.downloads.documents/document/raw%3A%2Fstorage%2Femulated%2F0%2FDownload%2FTEST%2F%File.pdf
@@ -351,13 +351,13 @@ public class FilePath extends CordovaPlugin {
                     }
                 } finally {
                     if (cursor != null)
-                    cursor.close();
+                        cursor.close();
                 }
                 //
                 final String id = DocumentsContract.getDocumentId(uri);
                 try {
                     final Uri contentUri = ContentUris.withAppendedId(
-                        Uri.parse("content://downloads/public_downloads"), Long.valueOf(id));
+                            Uri.parse("content://downloads/public_downloads"), Long.valueOf(id));
 
                     return getDataColumn(context, contentUri, null, null);
                 } catch(NumberFormatException e) {
@@ -427,10 +427,10 @@ public class FilePath extends CordovaPlugin {
         Uri returnUri =uri;
         Cursor returnCursor = context.getContentResolver().query(returnUri, null, null, null, null);
         /*
-        * Get the column indexes of the data in the Cursor,
-        *     * move to the first row in the Cursor, get the data,
-        *     * and display it.
-        * */
+         * Get the column indexes of the data in the Cursor,
+         *     * move to the first row in the Cursor, get the data,
+         *     * and display it.
+         * */
         int nameIndex = returnCursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
         int sizeIndex = returnCursor.getColumnIndex(OpenableColumns.SIZE);
         returnCursor.moveToFirst();
@@ -460,5 +460,14 @@ public class FilePath extends CordovaPlugin {
             Log.e("Exception",e.getMessage());
         }
         return  file.getPath();
+    }
+
+    // 2024/01/06 支援 Android 13 取得檔案權限
+    private String _getPermissions() {
+        if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return Manifest.permission.READ_MEDIA_IMAGES;
+        } else {
+            return Manifest.permission.READ_EXTERNAL_STORAGE;
+        }
     }
 }
